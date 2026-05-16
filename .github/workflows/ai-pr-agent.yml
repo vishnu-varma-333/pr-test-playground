@@ -1,0 +1,32 @@
+name: AI PR Agent
+
+on:
+  pull_request:
+    types: [opened, synchronize] # Runs when PR is created or new code is pushed
+
+jobs:
+  summarize-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # Needed so the AI can edit the PR body
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install langgraph langchain-google-genai PyGithub python-dotenv
+
+      - name: Run PR Agent
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python main.py

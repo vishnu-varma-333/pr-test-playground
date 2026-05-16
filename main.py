@@ -14,11 +14,9 @@ from tools import fetch_pr_data
 from graph import app
 
 def run_pr_agent(repo: str, pr_num: int):
-    # 1. Fetch raw data
     print(f"🚀 Starting Agent for {repo} PR #{pr_num}...")
     raw_data = fetch_pr_data(repo, pr_num)
     
-    # 2. Initialize State
     initial_state = {
         "repo_id": repo,
         "pr_number": pr_num,
@@ -27,21 +25,22 @@ def run_pr_agent(repo: str, pr_num: int):
         "revision_count": 0
     }
     
-    # 3. Run the LangGraph Agent!
     final_output = app.invoke(initial_state)
-    
-    print("\n" + "="*50)
-    print("🔥 FINAL GENERATED PR BODY:")
-    print("="*50 + "\n")
-    print(final_output["draft"])
-    
-    # NEW: Ask the user to push to GitHub
-    confirm = input("\n🚀 Would you like to push this description to GitHub? (y/n): ")
-    if confirm.lower() == 'y':
-        from tools import update_pr_on_github
-        update_pr_on_github(repo, pr_num, final_output["draft"])
+    body = final_output["draft"]
+
+    # Check if we are running inside GitHub Actions
+    is_github_action = os.getenv("GITHUB_ACTIONS") == "true"
+
+    if is_github_action:
+        print("🤖 Running in GitHub Actions. Pushing description automatically...")
+        update_pr_on_github(repo, pr_num, body)
     else:
-        print("❌ Update cancelled.")
+        print("\n" + "="*50)
+        print(body)
+        print("="*50)
+        confirm = input("\n🚀 Local mode: Push to GitHub? (y/n): ")
+        if confirm.lower() == 'y':
+            update_pr_on_github(repo, pr_num, body)
 
 if __name__ == "__main__":
     # When running in GitHub Actions, these variables are provided automatically

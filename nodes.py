@@ -28,22 +28,24 @@ def node_analyst(state: AgentState):
 
 def node_writer(state: AgentState):
     print("📝 Node: Writer is drafting the PR description...")
-    prompt = f"Create a PR body based on this analysis:\n{state['analysis']}"
+    prompt = f"Create a professional GitHub PR body based on this analysis:\n{state['analysis']}"
     response = llm.invoke(prompt)
-    return {"draft": response.content}
+    
+    # Extract text from the response safely
+    content = response.content
+    if isinstance(content, list):
+        content = "\n".join([c['text'] if isinstance(c, dict) and 'text' in c else str(c) for c in content])
+    
+    return {"draft": content}
 
 def node_critic(state: AgentState):
     print("🧐 Node: Critic is auditing the draft...")
-    prompt = f"Compare this PR Draft with the original Diff. If it's good, reply with 'PASS'.\nDiff: {state['diff']}\nDraft: {state['draft']}"
-    
+    prompt = f"Review this PR Draft against the Diff. Reply 'PASS' if good.\nDiff: {state['diff']}\nDraft: {state['draft']}"
     response = llm.invoke(prompt)
     
-    # FIX 2: Ensure the content is a string. 
-    # Sometimes the AI returns a list of blocks instead of text.
+    # Extract text safely
     content = response.content
     if isinstance(content, list):
-        # Join the text parts if it's a list
-        content = " ".join([str(item.get("text", item)) if isinstance(item, dict) else str(item) for item in content])
+        content = " ".join([c['text'] if isinstance(c, dict) and 'text' in c else str(c) for c in content])
     
-    feedback = content.strip()
-    return {"critic_feedback": feedback}
+    return {"critic_feedback": content.strip()}

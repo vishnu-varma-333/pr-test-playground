@@ -16,7 +16,7 @@ load_dotenv()
 
 # Using the EXACT model name your discover_models script found
 llm = ChatGoogleGenerativeAI(
-    model="gemini-flash-latest", 
+    model="dcfvgbhnj", 
     google_api_key=os.getenv("GOOGLE_API_KEY"),
     transport="rest"
 )

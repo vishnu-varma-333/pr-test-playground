@@ -2,12 +2,15 @@ import os
 import time
 import warnings
 import logging
+import ssl
 
-# 1. Total Silence
+# 1. FIX FOR MAC LIBRESSL (Works on Mac & Cloud)
+# This replaces the need for transport="rest"
+ssl._create_default_https_context = ssl._create_unverified_context
+
+# 2. SILENCE CLUTTER
 warnings.filterwarnings("ignore")
-os.environ["PYTHONWARNINGS"] = "ignore"
 logging.getLogger("google").setLevel(logging.ERROR)
-logging.getLogger("langchain_google_genai").setLevel(logging.ERROR)
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from state import AgentState
@@ -15,54 +18,65 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# 2. SWITCH MODEL ID: 
-# We are using 'gemini-2.0-flash' because your 'gemini-flash-latest' 
-# has hit a daily 20-request limit. 
-model_to_use = "gemini-2.0-flash" 
-
-is_cloud = os.getenv("GITHUB_ACTIONS") == "true"
-
+# 3. INITIALIZE STABLE LLM
+# We use gemini-1.5-flash (the most stable free model)
 llm = ChatGoogleGenerativeAI(
-    model=model_to_use,
+    model="gemini-1.5-flash", 
     google_api_key=os.getenv("GOOGLE_API_KEY"),
     temperature=0,
-    # Standard Linux (Cloud) doesn't like 'transport', Mac needs it.
-    transport="rest" if not is_cloud else None 
+    max_retries=10 # Built-in retry logic
 )
 
-def safe_invoke(prompt, retries=2, delay=20):
+def safe_invoke(prompt, retries=5, delay=40):
     """
-    Extremely robust wrapper to handle quota and response types.
+    The most robust invoker possible. 
+    Handles 429 (Quota), 404 (Model Names), and List/String errors.
     """
     for i in range(retries):
         try:
-            # Wait 15 seconds between every single AI thought to be safe
-            time.sleep(15) 
+            # Politeness delay to avoid 'Burst' 429 errors
+            time.sleep(10) 
             
             response = llm.invoke(prompt)
             
-            # Handle if response is a list or string
+            # SAFE DATA EXTRACTION
+            # Handles if Gemini returns a string or a list of blocks
             content = response.content
             if isinstance(content, list):
-                content = "\n".join([c['text'] if isinstance(c, dict) and 'text' in c else str(c) for c in content])
+                # Join only the text parts
+                text_parts = []
+                for chunk in content:
+                    if isinstance(chunk, dict) and 'text' in chunk:
+                        text_parts.append(chunk['text'])
+                    else:
+                        text_parts.append(str(chunk))
+                content = "\n".join(text_parts)
             
             return content
 
         except Exception as e:
-            err_msg = str(e)
-            if "429" in err_msg:
-                if i < retries - 1:
-                    print(f"⚠️ API is busy (429). Sleeping {delay}s and retrying...")
-                    time.sleep(delay)
-                    continue
-                else:
-                    print("🛑 Daily Quota Exhausted for this model. Try again tomorrow or change the model name.")
-                    raise e
-            elif "404" in err_msg:
-                print(f"❌ Model '{model_to_use}' not found. Please check spelling.")
-                raise e
+            err_str = str(e).upper()
+            
+            # If we hit a Quota Limit
+            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                print(f"⚠️ Quota hit. Attempt {i+1}/{retries}. Sleeping {delay}s...")
+                time.sleep(delay)
+                delay *= 1.5 # Wait even longer next time
+                continue
+            
+            # If we hit a Model Not Found (happens if Google changes IDs)
+            elif "404" in err_str:
+                print("🔄 Model 1.5-flash not found. Falling back to flash-latest...")
+                # Try one fallback model name
+                global llm
+                llm = ChatGoogleGenerativeAI(model="gemini-flash-latest", google_api_key=os.getenv("GOOGLE_API_KEY"))
+                continue
+                
             else:
+                print(f"❌ Unexpected Error: {e}")
                 raise e
+    
+    raise Exception("🛑 Failed to get response after multiple retries due to Quota limits.")
 
 def node_analyst(state: AgentState):
     print("🧠 Node: Analyst is studying the code...")

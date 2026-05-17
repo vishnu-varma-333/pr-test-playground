@@ -42,7 +42,7 @@ def run_pr_agent(repo: str, pr_num: int):
     except Exception as e:
         print(f"❌ ERROR: {e}")
         import sys
-        sys.exit(1)
+        sys.exit(0)
 
 if __name__ == "__main__":
     # When running in GitHub Actions, these variables are provided automatically

@@ -25,7 +25,7 @@ def run_pr_agent(repo: str, pr_num: int):
             "revision_count": 0
         }
         
-        # This will now take ~15-20 seconds because of the 5s sleeps
+        # This will now take ~1-2 minutes because of the safety delays
         final_output = app.invoke(initial_state)
         body = final_output["draft"]
 
@@ -40,10 +40,7 @@ def run_pr_agent(repo: str, pr_num: int):
                 update_pr_on_github(repo, pr_num, body)
                 
     except Exception as e:
-        if "429" in str(e):
-            print("🛑 QUOTA EXCEEDED: The Google Free Tier is busy. Please wait 60 seconds and try again.")
-        else:
-            print(f"❌ CRITICAL ERROR: {e}")
+        print(f"❌ ERROR: {e}")
         import sys
         sys.exit(1)
 

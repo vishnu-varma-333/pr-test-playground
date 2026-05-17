@@ -3,7 +3,7 @@ import time
 import warnings
 import logging
 
-# Silence Warnings
+# Silence Clutter
 warnings.filterwarnings("ignore")
 logging.getLogger("google").setLevel(logging.ERROR)
 
@@ -13,35 +13,43 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Check if we are in Cloud or Local
 is_cloud = os.getenv("GITHUB_ACTIONS") == "true"
 
-if is_cloud:
-    # Cloud (Linux) - No transport needed
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-flash-latest", 
-        google_api_key=os.getenv("GOOGLE_API_KEY"),
-        temperature=0
-    )
-else:
-    # Local (Mac) - Needs the transport fix
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-flash-latest", 
-        google_api_key=os.getenv("GOOGLE_API_KEY"),
-        transport="rest",
-        temperature=0
-    )
+# We use gemini-1.5-flash-002 to avoid being auto-upgraded to experimental models
+model_name = "gemini-1.5-flash-002" 
 
-def safe_invoke(prompt):
-    """Helper to prevent 429 and handle formatting."""
-    # Stay below 15 Requests Per Minute (Free Tier limit)
-    time.sleep(6) 
-    response = llm.invoke(prompt)
-    
-    # Handle list vs string response
-    content = response.content
-    if isinstance(content, list):
-        content = "\n".join([c['text'] if isinstance(c, dict) and 'text' in c else str(c) for c in content])
-    return content
+llm = ChatGoogleGenerativeAI(
+    model=model_name,
+    google_api_key=os.getenv("GOOGLE_API_KEY"),
+    temperature=0,
+    transport="rest" if not is_cloud else None # Use REST for Mac, default for Cloud
+)
+
+def safe_invoke(prompt, retries=3, delay=30):
+    """
+    Invokes the LLM with exponential backoff for 429 errors.
+    """
+    for i in range(retries):
+        try:
+            # Standard delay to stay polite to the API
+            time.sleep(10) 
+            
+            response = llm.invoke(prompt)
+            
+            # Handle List vs String response
+            content = response.content
+            if isinstance(content, list):
+                content = "\n".join([c['text'] if isinstance(c, dict) and 'text' in c else str(c) for c in content])
+            return content
+
+        except Exception as e:
+            if "429" in str(e) and i < retries - 1:
+                print(f"⚠️ Quota hit. Retrying in {delay} seconds... (Attempt {i+1}/{retries})")
+                time.sleep(delay)
+                delay *= 2  # Wait longer next time
+            else:
+                raise e
 
 def node_analyst(state: AgentState):
     print("🧠 Node: Analyst is studying the code...")

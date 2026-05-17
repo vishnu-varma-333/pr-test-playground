@@ -1,16 +1,15 @@
 import os
 import warnings
 import logging
+import sys
 
-# 1. Suppress Python Warnings
+# 1. Suppress Warnings
 warnings.filterwarnings("ignore")
-# 2. Suppress Google/gRPC Logging
 os.environ["PYTHONWARNINGS"] = "ignore"
-os.environ["GRPC_VERBOSITY"] = "ERROR"
 logging.getLogger("google").setLevel(logging.ERROR)
 
-import os
-from tools import fetch_pr_data
+# 2. Imports - ADDED update_pr_on_github here!
+from tools import fetch_pr_data, update_pr_on_github
 from graph import app
 
 def run_pr_agent(repo: str, pr_num: int):

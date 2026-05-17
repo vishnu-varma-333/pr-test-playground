@@ -13,33 +13,39 @@ from tools import fetch_pr_data, update_pr_on_github
 from graph import app
 
 def run_pr_agent(repo: str, pr_num: int):
-    print(f"🚀 Starting Agent for {repo} PR #{pr_num}...")
-    raw_data = fetch_pr_data(repo, pr_num)
-    
-    initial_state = {
-        "repo_id": repo,
-        "pr_number": pr_num,
-        "diff": raw_data["diff"],
-        "context": raw_data["context"],
-        "revision_count": 0
-    }
-    
-    final_output = app.invoke(initial_state)
-    body = final_output["draft"]
+    try:
+        print(f"🚀 Starting Agent for {repo} PR #{pr_num}...")
+        raw_data = fetch_pr_data(repo, pr_num)
+        
+        initial_state = {
+            "repo_id": repo,
+            "pr_number": pr_num,
+            "diff": raw_data["diff"],
+            "context": raw_data["context"],
+            "revision_count": 0
+        }
+        
+        # This will now take ~15-20 seconds because of the 5s sleeps
+        final_output = app.invoke(initial_state)
+        body = final_output["draft"]
 
-    # Check if we are running inside GitHub Actions
-    is_github_action = os.getenv("GITHUB_ACTIONS") == "true"
-
-    if is_github_action:
-        print("🤖 Running in GitHub Actions. Pushing description automatically...")
-        update_pr_on_github(repo, pr_num, body)
-    else:
-        print("\n" + "="*50)
-        print(body)
-        print("="*50)
-        confirm = input("\n🚀 Local mode: Push to GitHub? (y/n): ")
-        if confirm.lower() == 'y':
+        if os.getenv("GITHUB_ACTIONS") == "true":
+            print("🤖 GitHub Action detected. Pushing to PR automatically...")
             update_pr_on_github(repo, pr_num, body)
+            print("✅ PR Description Updated!")
+        else:
+            print("\n" + "="*50 + "\n" + body + "\n" + "="*50)
+            confirm = input("\n🚀 Local mode: Push to GitHub? (y/n): ")
+            if confirm.lower() == 'y':
+                update_pr_on_github(repo, pr_num, body)
+                
+    except Exception as e:
+        if "429" in str(e):
+            print("🛑 QUOTA EXCEEDED: The Google Free Tier is busy. Please wait 60 seconds and try again.")
+        else:
+            print(f"❌ CRITICAL ERROR: {e}")
+        import sys
+        sys.exit(1)
 
 if __name__ == "__main__":
     # When running in GitHub Actions, these variables are provided automatically

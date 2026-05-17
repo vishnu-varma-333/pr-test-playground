@@ -4,10 +4,10 @@ import warnings
 import logging
 import ssl
 
-# 1. FIX FOR MAC LIBRESSL (Works on Mac & Cloud)
+# 1. SSL Fix for Mac
 ssl._create_default_https_context = ssl._create_unverified_context
 
-# 2. SILENCE CLUTTER
+# 2. Silence Clutter
 warnings.filterwarnings("ignore")
 logging.getLogger("google").setLevel(logging.ERROR)
 
@@ -17,77 +17,42 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# 3. INITIALIZE LLM
+# 3. Setup LLM
+is_cloud = os.getenv("GITHUB_ACTIONS") == "true"
 llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash", 
+    model="gemini-1.5-flash", # Use the stable 1.5 model
     google_api_key=os.getenv("GOOGLE_API_KEY"),
     temperature=0,
-    max_retries=10
+    transport="rest" if not is_cloud else None # Use rest ONLY for local Mac
 )
 
-def safe_invoke(prompt, retries=5, delay=45):
-    # The 'global' declaration must be at the top to avoid SyntaxError
-    global llm
+def safe_invoke(prompt):
+    """Simple, clean invoker with basic string handling."""
+    # A small 5-second sleep is enough to stay within the 15 RPM limit 
+    # without making the script take 10 minutes.
+    time.sleep(5) 
+    response = llm.invoke(prompt)
     
-    for i in range(retries):
-        try:
-            # Polite delay to stay within the 15 Requests Per Minute limit
-            time.sleep(12) 
-            
-            response = llm.invoke(prompt)
-            
-            # SAFE DATA EXTRACTION
-            content = response.content
-            if isinstance(content, list):
-                text_parts = []
-                for chunk in content:
-                    if isinstance(chunk, dict) and 'text' in chunk:
-                        text_parts.append(chunk['text'])
-                    else:
-                        text_parts.append(str(chunk))
-                content = "\n".join(text_parts)
-            
-            return str(content)
-
-        except Exception as e:
-            err_str = str(e).upper()
-            
-            # Handle Quota / Rate Limits
-            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                print(f"⚠️ Quota hit. Attempt {i+1}/{retries}. Sleeping {delay}s...")
-                time.sleep(delay)
-                delay *= 1.5 
-                continue
-            
-            # Handle Model Not Found (Fallback)
-            elif "404" in err_str:
-                print("🔄 Model ID error. Switching to fallback...")
-                llm = ChatGoogleGenerativeAI(
-                    model="gemini-flash-latest", 
-                    google_api_key=os.getenv("GOOGLE_API_KEY")
-                )
-                continue
-                
-            else:
-                print(f"❌ Unexpected Error: {e}")
-                raise e
-    
-    raise Exception("🛑 Failed after multiple retries.")
+    # Handle the 'List vs String' response bug
+    content = response.content
+    if isinstance(content, list):
+        content = "\n".join([c['text'] if isinstance(c, dict) and 'text' in c else str(c) for c in content])
+    return str(content)
 
 def node_analyst(state: AgentState):
     print("🧠 Node: Analyst is studying the code...")
     prompt = f"Analyze this git diff and context:\nContext: {state['context']}\nDiff: {state['diff']}"
-    res = safe_invoke(prompt)
-    return {"analysis": res}
+    return {"analysis": safe_invoke(prompt)}
 
 def node_writer(state: AgentState):
     print("📝 Node: Writer is drafting the PR description...")
     prompt = f"Create a professional GitHub PR body based on this analysis:\n{state['analysis']}"
-    res = safe_invoke(prompt)
-    return {"draft": res}
+    return {"draft": safe_invoke(prompt)}
 
 def node_critic(state: AgentState):
     print("🧐 Node: Critic is auditing the draft...")
+    # In 'Speed mode', we can just have the critic return PASS 
+    # to save quota, or keep the audit logic:
     prompt = f"Review this PR Draft against the Diff. Reply 'PASS' if good.\nDiff: {state['diff']}\nDraft: {state['draft']}"
     res = safe_invoke(prompt)
     return {"critic_feedback": res.strip()}

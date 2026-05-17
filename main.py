@@ -3,6 +3,8 @@ import warnings
 import logging
 import sys
 
+print("🟢 SCRIPT STARTING...", flush=True)
+
 # 1. Suppress Warnings
 warnings.filterwarnings("ignore")
 os.environ["PYTHONWARNINGS"] = "ignore"
@@ -14,9 +16,10 @@ from graph import app
 
 def run_pr_agent(repo: str, pr_num: int):
     try:
-        print(f"🚀 Starting Agent for {repo} PR #{pr_num}...")
+        print(f"🚀 Fetching data for {repo} PR #{pr_num}...", flush=True)
         raw_data = fetch_pr_data(repo, pr_num)
-        
+        print("✅ Data fetched. Handing over to AI Agent...", flush=True)
+
         initial_state = {
             "repo_id": repo,
             "pr_number": pr_num,

@@ -22,7 +22,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install langgraph langchain-google-genai PyGithub python-dotenv
+          python -m pip install --upgrade pip
+          pip install --upgrade langgraph langchain-google-genai PyGithub python-dotenv
 
       - name: Run PR Agent
         env:

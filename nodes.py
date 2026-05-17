@@ -13,41 +13,38 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Check if we are in Cloud or Local
+# Determine environment
 is_cloud = os.getenv("GITHUB_ACTIONS") == "true"
 
-# We use gemini-1.5-flash-002 to avoid being auto-upgraded to experimental models
-model_name = "gemini-1.5-flash-002" 
+# Define LLM arguments as a dictionary
+llm_kwargs = {
+    "model": "gemini-flash-latest",
+    "google_api_key": os.getenv("GOOGLE_API_KEY"),
+    "temperature": 0,
+    "max_retries": 5
+}
 
-llm = ChatGoogleGenerativeAI(
-    model=model_name,
-    google_api_key=os.getenv("GOOGLE_API_KEY"),
-    temperature=0,
-    transport="rest" if not is_cloud else None # Use REST for Mac, default for Cloud
-)
+# Only add transport="rest" if we are NOT in the cloud (for your Mac)
+if not is_cloud:
+    llm_kwargs["transport"] = "rest"
+
+# Initialize with the clean dictionary
+llm = ChatGoogleGenerativeAI(**llm_kwargs)
 
 def safe_invoke(prompt, retries=3, delay=30):
-    """
-    Invokes the LLM with exponential backoff for 429 errors.
-    """
     for i in range(retries):
         try:
-            # Standard delay to stay polite to the API
-            time.sleep(10) 
-            
+            time.sleep(10) # Stay polite to the API
             response = llm.invoke(prompt)
-            
-            # Handle List vs String response
             content = response.content
             if isinstance(content, list):
                 content = "\n".join([c['text'] if isinstance(c, dict) and 'text' in c else str(c) for c in content])
             return content
-
         except Exception as e:
             if "429" in str(e) and i < retries - 1:
-                print(f"⚠️ Quota hit. Retrying in {delay} seconds... (Attempt {i+1}/{retries})")
+                print(f"⚠️ Quota hit. Retrying in {delay} seconds...")
                 time.sleep(delay)
-                delay *= 2  # Wait longer next time
+                delay *= 2
             else:
                 raise e
 

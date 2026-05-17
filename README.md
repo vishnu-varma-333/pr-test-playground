@@ -87,3 +87,31 @@ The project is configured to run automatically whenever a PR is opened in this r
 ### Tips for Teammates:
 *   **Empty Descriptions:** You can leave the PR description box empty; the AI will fill it in about 60 seconds after you create the PR.
 *   **Security Warnings:** If the AI adds a "Security Note," pay attention! It likely found a hardcoded password or a sensitive logic change.
+
+
+
+### How to set this up right now:
+If you want your team to use it immediately across different repos without copy-pasting code:
+
+1.  **Make your `pr-test-playground` Repo Public** (or internal to your company).
+2.  **Tell them to create a `.github/workflows/ai-agent.yml`** in their repo.
+3.  **Give them this specific "Remote" code** for their YAML file:
+    ```yaml
+    name: AI PR Agent
+    on:
+      pull_request:
+        types: [opened]
+    jobs:
+      run-ai:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Checkout their code
+            uses: actions/checkout@v4
+          - name: Run YOUR Agent logic from YOUR repo
+            uses: vishnu-varma-333/pr-test-playground@main # This runs YOUR code on THEIR PR
+            env:
+              GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    ```
+
+**Summary:** They only copy **one small YAML file**. The Python code stays with you. This is how professional "Marketplace" actions work!

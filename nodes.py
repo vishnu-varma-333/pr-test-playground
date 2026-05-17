@@ -3,9 +3,11 @@ import time
 import warnings
 import logging
 
-# Silence Clutter
+# 1. Total Silence
 warnings.filterwarnings("ignore")
+os.environ["PYTHONWARNINGS"] = "ignore"
 logging.getLogger("google").setLevel(logging.ERROR)
+logging.getLogger("langchain_google_genai").setLevel(logging.ERROR)
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from state import AgentState
@@ -13,38 +15,52 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Determine environment
+# 2. SWITCH MODEL ID: 
+# We are using 'gemini-2.0-flash' because your 'gemini-flash-latest' 
+# has hit a daily 20-request limit. 
+model_to_use = "gemini-2.0-flash" 
+
 is_cloud = os.getenv("GITHUB_ACTIONS") == "true"
 
-# Define LLM arguments as a dictionary
-llm_kwargs = {
-    "model": "gemini-flash-latest",
-    "google_api_key": os.getenv("GOOGLE_API_KEY"),
-    "temperature": 0,
-    "max_retries": 5
-}
+llm = ChatGoogleGenerativeAI(
+    model=model_to_use,
+    google_api_key=os.getenv("GOOGLE_API_KEY"),
+    temperature=0,
+    # Standard Linux (Cloud) doesn't like 'transport', Mac needs it.
+    transport="rest" if not is_cloud else None 
+)
 
-# Only add transport="rest" if we are NOT in the cloud (for your Mac)
-if not is_cloud:
-    llm_kwargs["transport"] = "rest"
-
-# Initialize with the clean dictionary
-llm = ChatGoogleGenerativeAI(**llm_kwargs)
-
-def safe_invoke(prompt, retries=3, delay=30):
+def safe_invoke(prompt, retries=2, delay=20):
+    """
+    Extremely robust wrapper to handle quota and response types.
+    """
     for i in range(retries):
         try:
-            time.sleep(10) # Stay polite to the API
+            # Wait 15 seconds between every single AI thought to be safe
+            time.sleep(15) 
+            
             response = llm.invoke(prompt)
+            
+            # Handle if response is a list or string
             content = response.content
             if isinstance(content, list):
                 content = "\n".join([c['text'] if isinstance(c, dict) and 'text' in c else str(c) for c in content])
+            
             return content
+
         except Exception as e:
-            if "429" in str(e) and i < retries - 1:
-                print(f"⚠️ Quota hit. Retrying in {delay} seconds...")
-                time.sleep(delay)
-                delay *= 2
+            err_msg = str(e)
+            if "429" in err_msg:
+                if i < retries - 1:
+                    print(f"⚠️ API is busy (429). Sleeping {delay}s and retrying...")
+                    time.sleep(delay)
+                    continue
+                else:
+                    print("🛑 Daily Quota Exhausted for this model. Try again tomorrow or change the model name.")
+                    raise e
+            elif "404" in err_msg:
+                print(f"❌ Model '{model_to_use}' not found. Please check spelling.")
+                raise e
             else:
                 raise e
 

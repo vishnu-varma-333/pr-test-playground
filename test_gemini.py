@@ -14,15 +14,4 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Using the EXACT model name your discover_models script found
-llm = ChatGoogleGenerativeAI(
-    model="openai gemini claude", 
-    google_api_key=os.getenv("GOOGLE_API_KEY"),
-    transport="rest"
-)
 
-try:
-    response = llm.invoke("Say 'System clear and online'")
-    print(f"\n✅ Gemini says: {response.content}")
-except Exception as e:
-    print(f"\n❌ Error: {e}")

@@ -1,64 +1,23 @@
-import os
-import warnings
-import logging
-import sys
 
-print("🟢 SCRIPT STARTING...", flush=True)
+import re
+from werkzeug.security import generate_password_hash, check_password_hash
 
-# 1. Suppress Warnings
-warnings.filterwarnings("ignore")
-os.environ["PYTHONWARNINGS"] = "ignore"
-logging.getLogger("google").setLevel(logging.ERROR)
+def is_valid_username(username):
+    return re.match("^[a-zA-Z0-9_]{3,30}$", username) is not None
 
-# 2. Imports - ADDED update_pr_on_github here!
-from tools import fetch_pr_data, update_pr_on_github
-from graph import app
+def register_user(username, password):
+    hashed_password = generate_password_hash(password)
+    query = "INSERT INTO users (username, password) VALUES (%s, %s)"
+    db.execute(query, (username, hashed_password))
 
-def run_pr_agent(repo: str, pr_num: int):
-    try:
-        print(f"🚀 Fetching data for {repo} PR #{pr_num}...", flush=True)
-        raw_data = fetch_pr_data(repo, pr_num)
-        print("✅ Data fetched. Handing over to AI Agent...", flush=True)
-
-        initial_state = {
-            "repo_id": repo,
-            "pr_number": pr_num,
-            "diff": raw_data["diff"],
-            "context": raw_data["context"],
-            "revision_count": 0
-        }
-        
-        # This will now take ~1-2 minutes because of the safety delays
-        final_output = app.invoke(initial_state)
-        body = final_output["draft"]
-
-        if os.getenv("GITHUB_ACTIONS") == "true":
-            print("🤖 GitHub Action detected. Pushing to PR automatically...")
-            update_pr_on_github(repo, pr_num, body)
-            print("✅ PR Description Updated!")
-        else:
-            print("\n" + "="*50 + "\n" + body + "\n" + "="*50)
-            confirm = input("\n🚀 Local mode: Push to GitHub? (y/n): ")
-            if confirm.lower() == 'y':
-                update_pr_on_github(repo, pr_num, body)
-                
-    except Exception as e:
-        print(f"❌ ERROR: {e}")
-        import sys
-        sys.exit(0)
-
-if __name__ == "__main__":
-    # When running in GitHub Actions, these variables are provided automatically
-    repo = os.getenv("GITHUB_REPOSITORY")  # e.g., "vishnu-varma-333/pr-test-playground"
+def login_user(username, password):
+    if not is_valid_username(username):
+        raise ValueError("Invalid username format")
     
-    # GitHub provides the event path, we can extract the PR number from it
-    # But an easier way is to pass it as an argument or env var
-    pr_num = os.getenv("PR_NUMBER")
-
-    if repo and pr_num:
-        print(f"🤖 GitHub Action triggered for {repo} PR #{pr_num}")
-        run_pr_agent(repo, int(pr_num))
-    else:
-        # Fallback for local testing
-        print("⚠️ Environment variables not found. Running in local mode...")
-        run_pr_agent("your-username/your-repo", 1)
+    query = "SELECT password FROM users WHERE username = %s"
+    result = db.execute(query, (username,))
+    if result:
+        stored_password = result[0]['password']
+        if check_password_hash(stored_password, password):
+            return True
+    return False
